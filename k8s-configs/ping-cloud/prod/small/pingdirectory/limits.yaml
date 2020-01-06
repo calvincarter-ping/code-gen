@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ds
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: ds
+        resources:
+          limits:
+            memory: 16Gi
+            cpu: 2
+          requests:
+            memory: 16Gi
+            cpu: 2
+        env:
+        - name: MAX_HEAP_SIZE
+          value: 16g
+  volumeClaimTemplates:
+  - metadata:
+      name: out-dir
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: pingdirectory-io1
+      resources:
+        requests:
+          storage: 500Gi
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pd-backup-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: pingdirectory-io1
+  resources:
+    requests:
+      storage: 50Gi

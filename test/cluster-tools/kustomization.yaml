@@ -1,0 +1,44 @@
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+
+resources:
+# These are AWS-specific and not included in the out-of-the-box cluster tools.
+- ../../k8s-configs/cluster-tools/cert-manager/route53
+- ../../k8s-configs/cluster-tools/cluster-autoscaler
+- ../../k8s-configs/cluster-tools/monitoring
+
+# These are cloud-agnostic cluster tools.
+- ../../k8s-configs/cluster-tools
+
+patchesJson6902:
+# logs
+- path: patches/ingress/logs.yaml
+  target:
+    group: extensions
+    version: v1beta1
+    kind: Ingress
+    name: kibana-ingress
+    namespace: elastic-stack-logging
+
+# Make the admin nodes available externally for test purposes. In general, they
+# will be behind a VPN gateway on all CDEs so only admins have access to them.
+- path: patches/service/ingress-nginx-private.yaml
+  target:
+    version: v1
+    kind: Service
+    name: ingress-nginx
+    namespace: ingress-nginx-private
+
+# cluster auto-scaler
+- path: patches/deployment/patch-cluster-and-region.yaml
+  target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: cluster-autoscaler
+    namespace: kube-system
+
+patchesStrategicMerge:
+- patches/clusterissuer/letsencrypt-issuer.yaml
+- patches/configmap/cluster-info.yaml
+- patches/configmap/cwagentconfig.yaml

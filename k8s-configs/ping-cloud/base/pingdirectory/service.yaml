@@ -1,0 +1,34 @@
+# Headless service that provides DNS between the pods in the pingdirectory
+# topology
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pingdirectory
+spec:
+  publishNotReadyAddresses: true
+  ports:
+  - port: 389
+    name: ldap
+  - port: 636
+    name: ldaps
+  clusterIP: None
+
+---
+
+# Service that exposes the pingdirectory LDAPS port on the admin subnet.
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: pingdirectory-admin
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+    external-dns.alpha.kubernetes.io/hostname: pingdirectory-admin-dev.ping-demo.com
+spec:
+  externalTrafficPolicy: Local
+  type: LoadBalancer
+  ports:
+  - port: 636
+    name: ldaps

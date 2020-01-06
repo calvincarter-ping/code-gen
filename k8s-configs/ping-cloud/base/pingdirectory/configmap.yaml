@@ -1,0 +1,202 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ds-init
+data:
+  init.sh: |-
+    #!/bin/sh -x
+
+    #--- Wait for services if there are any dependent services we must wait on --- #
+    if test ! -z "${WAIT_FOR_SERVICES}"; then
+      for SERVICE in "${WAIT_FOR_SERVICES}"; do
+        until nslookup "${SERVICE}"; do
+          echo "Waiting for service ${SERVICE}"
+          sleep 2
+        done
+      done
+    fi
+
+    #--- Sleep for the configured initial delay seconds ---#
+    SLEEP_SECONDS=${INITIAL_DELAY_SECONDS:-0}
+    sleep ${SLEEP_SECONDS}
+
+    #--- Copy SSH configuration files ---#
+    test -f /known_hosts && cp /known_hosts /.ssh
+    test -f /id_rsa && cp /id_rsa /.ssh
+
+    # Install kubectl
+    echo "Installing kubectl"
+    curl https://storage.googleapis.com/kubernetes-release/release/v1.15.0/bin/linux/amd64/kubectl -o /data/kubectl
+    chmod +x /data/kubectl
+
+    #--- Generate a dummy topology JSON file so the hook that generates it in the image is not triggered ---#
+    TOPOLOGY_FILE=/data/topology.json
+    cat <<EOF > "${TOPOLOGY_FILE}"
+    {
+          "serverInstances" : []
+    }
+    EOF
+
+    exit 0
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ds-post-start
+data:
+  80-post-start.sh: |-
+    #!/bin/sh -x
+
+    . "${HOOKS_DIR}/pingcommon.lib.sh"
+
+    test -f "${STAGING_DIR}/env_vars" && . "${STAGING_DIR}/env_vars"
+    test -f "${HOOKS_DIR}/pingdirectory.lib.sh" && . "${HOOKS_DIR}/pingdirectory.lib.sh"
+
+    echo "Starting post-start hook"
+
+    echo "Running ldapsearch test on this container (${HOSTNAME})"
+    waitUntilLdapUp "localhost" "${LDAPS_PORT}" ""
+
+    echo "Changing the cluster name to ${HOSTNAME}"
+    dsconfig --no-prompt \
+      --useSSL --trustAll \
+      --hostname "${HOSTNAME}" --port "${LDAPS_PORT}" \
+      set-server-instance-prop \
+      --instance-name "${HOSTNAME}" \
+      --set cluster-name:"${HOSTNAME}"
+
+    # --- NOTE ---
+    # This assumes that data initialization is only required once for the initial data in the server profile.
+    # Subsequent initialization of data will be performed externally after populating one of the servers using data
+    # sync or some other mechanism, like import-ldif, followed by dsreplication initialize-all. This assumption may be
+    # different for each customer, but the script may be easily adjusted as appropriate for the customer's use case.
+
+    echo "Checking if replication is already set up on ${HOSTNAME}"
+    REPL_SETUP_MARKER_FILE=/opt/out/instance/config/repl-setup
+
+    if test -f "${REPL_SETUP_MARKER_FILE}"; then
+      echo "Replication is already set up on ${HOSTNAME}"
+      exit 0
+    fi
+
+    SHORT_HOST_NAME=$(hostname)
+    ORDINAL=$(echo ${SHORT_HOST_NAME##*-})
+    echo "Pod ordinal: ${ORDINAL}"
+
+    if test ${ORDINAL} -eq 0; then
+      touch "${REPL_SETUP_MARKER_FILE}"
+      exit 0
+    fi
+
+    DOMAIN_NAME=$(hostname -f | cut -d'.' -f2-)
+    SRC_HOST="${K8S_STATEFUL_SET_NAME}-0.${DOMAIN_NAME}"
+
+    echo "Running dsreplication enable"
+    dsreplication enable \
+      --retryTimeoutSeconds ${RETRY_TIMEOUT_SECONDS} \
+      --trustAll \
+      --host1 "${SRC_HOST}" --port1 "${LDAPS_PORT}" --useSSL1 \
+      --bindDN1 "${ROOT_USER_DN}" --bindPasswordFile1 "${ROOT_USER_PASSWORD_FILE}" \
+      --host2 "${HOSTNAME}" --port2 "${LDAPS_PORT}" --useSSL2 \
+      --bindDN2 "${ROOT_USER_DN}" --bindPasswordFile2 "${ROOT_USER_PASSWORD_FILE}" \
+      --replicationPort2 "${REPLICATION_PORT}" \
+      --adminUID "${ADMIN_USER_NAME}" --adminPasswordFile "${ADMIN_USER_PASSWORD_FILE}" \
+      --no-prompt --ignoreWarnings \
+      --baseDN "${USER_BASE_DN}" \
+      --noSchemaReplication \
+      --enableDebug --globalDebugLevel verbose
+
+    _replEnableResult=$?
+    echo "Replication enable for ${HOSTNAME} result=${_replEnableResult}"
+
+    if test ${_replEnableResult} -ne 0; then
+      echo "Not running dsreplication initialize since enable failed with a non-successful return code"
+      exit ${_replEnableResult}
+    fi
+
+    echo "Running dsreplication initialize"
+    dsreplication initialize \
+      --retryTimeoutSeconds ${RETRY_TIMEOUT_SECONDS} \
+      --trustAll \
+      --hostSource "${SRC_HOST}" --portSource ${LDAPS_PORT} --useSSLSource \
+      --hostDestination "${HOSTNAME}" --portDestination ${LDAPS_PORT} --useSSLDestination \
+      --baseDN "${USER_BASE_DN}" \
+      --adminUID "${ADMIN_USER_NAME}" \
+      --adminPasswordFile "${ADMIN_USER_PASSWORD_FILE}" \
+      --no-prompt \
+      --enableDebug \
+      --globalDebugLevel verbose
+
+    _replInitResult=$?
+    echo "Replication initialize for ${HOSTNAME} result=${_replInitResult}"
+
+    test ${_replInitResult} -eq 0 && touch "${REPL_SETUP_MARKER_FILE}"
+    exit ${_replInitResult}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ds-ready
+data:
+  readiness.sh: |-
+    #!/bin/sh -x
+
+    # Verify that server is responsive on its LDAP secure port
+    echo "Readiness probe - verifying root DSE access"
+    /opt/liveness.sh || exit 1
+
+    # Verify that replication is set up
+    echo "Readiness probe - verifying replication is set up"
+    REPL_SETUP_MARKER_FILE=/opt/out/instance/config/repl-setup
+    test -f "${REPL_SETUP_MARKER_FILE}" && exit 0 || exit 1
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ds-pre-stop
+data:
+  pre-stop.sh: |-
+    #!/bin/sh -x
+
+    echo "Starting pre-stop hook"
+
+    SHORT_HOST_NAME=$(hostname)
+    ORDINAL=$(echo ${SHORT_HOST_NAME##*-})
+    echo "Pod ordinal: ${ORDINAL}"
+
+    NUM_REPLICAS=$(kubectl get statefulset "${K8S_STATEFUL_SET_NAME}" -o jsonpath='{.spec.replicas}')
+    echo "Number of replicas: ${NUM_REPLICAS}"
+
+    if test ${ORDINAL} -lt ${NUM_REPLICAS}; then
+      echo "Not removing server since it is still in the topology"
+      exit 0
+    fi
+
+    echo "Gettting instance name from config"
+    INSTANCE_NAME=$(dsconfig --no-prompt \
+      --useSSL --trustAll \
+      --hostname "${HOSTNAME}" --port "${LDAPS_PORT}" \
+      get-global-configuration-prop \
+      --property instance-name \
+      --script-friendly |
+      awk '{ print $2 }')
+
+    echo "Removing ${HOSTNAME} (instance name: ${INSTANCE_NAME}) from the topology"
+    remove-defunct-server --no-prompt \
+      --serverInstanceName "${INSTANCE_NAME}" \
+      --retryTimeoutSeconds ${RETRY_TIMEOUT_SECONDS} \
+      --ignoreOnline \
+      --bindDN "${ROOT_USER_DN}" \
+      --bindPasswordFile "${ROOT_USER_PASSWORD_FILE}" \
+      --enableDebug --globalDebugLevel verbose
+    echo "Server removal exited with return code: ${?}"
+
+    REPL_SETUP_MARKER_FILE=/opt/out/instance/config/repl-setup
+    echo "Removing ${REPL_SETUP_MARKER_FILE} marker file"
+    rm -f "${REPL_SETUP_MARKER_FILE}"

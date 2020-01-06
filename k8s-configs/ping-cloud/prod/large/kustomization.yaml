@@ -1,0 +1,19 @@
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+
+namespace: ping-cloud
+
+commonLabels:
+  app: ping-cloud
+
+resources:
+- ../../base
+- ../../base/pingdirectory
+- ../../base/pingaccess/cluster
+- ../../base/pingfederate/cluster
+
+patchesStrategicMerge:
+- pingdirectory/limits.yaml
+- pingfederate/limits.yaml
+- pingaccess/limits.yaml
+- pingaccess/admin-init-env.yaml
