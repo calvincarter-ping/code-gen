@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pingaccess-admin-backup-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: pingaccess-gp2
+  resources:
+    requests:
+      storage: 1Gi
