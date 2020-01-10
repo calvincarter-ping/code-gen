@@ -5,8 +5,6 @@ resources:
 - configmap.yaml
 - hpa.yaml
 - secret.yaml
-- storage.yaml
-- backup.yaml
 - ingress.yaml
 - service.yaml
 - statefulset.yaml

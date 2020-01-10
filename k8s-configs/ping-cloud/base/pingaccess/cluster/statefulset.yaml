@@ -5,6 +5,7 @@ kind: StatefulSet
 metadata:
   name: pingaccess-admin
   labels:
+    cluster: pingaccess-cluster
     role: pingaccess-admin
 spec:
   replicas: 1
@@ -16,6 +17,7 @@ spec:
     metadata:
       name: pingaccess-admin
       labels:
+        cluster: pingaccess-cluster
         role: pingaccess-admin
       annotations:
         lastUpdateReason: "NA"
@@ -70,8 +72,9 @@ spec:
         - name: pingaccess-license
           mountPath: /opt/in/instance/conf/pingaccess.lic
           subPath: pingaccess.lic
-        - name: out-dir
-          mountPath: /opt/out
+        - name: pingaccess-jwk
+          mountPath: /opt/in/instance/conf/pa.jwk
+          subPath: pa.jwk
         readinessProbe:
           exec:
             command: [ liveness.sh ]
@@ -90,8 +93,6 @@ spec:
           value: CLUSTERED_CONSOLE
         - name: HTTPS_PORT
           value: "9090"
-        - name: K8S_STATEFUL_SET_SERVICE_NAME_PINGACCESS_ADMIN
-          value: $(K8S_STATEFUL_SET_SERVICE_NAME_PINGACCESS_ADMIN)
         - name: INITIAL_ADMIN_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -132,9 +133,11 @@ spec:
           secretName: pingaccess-passwords
           optional: true
           defaultMode: 0400
-      - name: out-dir
-        persistentVolumeClaim:
-          claimName: pingaccess-admin-backup-pvc
+      - name: pingaccess-jwk
+        secret:
+          secretName: pingaccess-jwk
+          optional: true
+          defaultMode: 0400
 
 ---
 
@@ -145,6 +148,7 @@ kind: StatefulSet
 metadata:
   name: pingaccess
   labels:
+    cluster: pingaccess-cluster
     role: pingaccess-engine
 spec:
   replicas: 1
@@ -154,6 +158,7 @@ spec:
     metadata:
       name: pingaccess-engine
       labels:
+        cluster: pingaccess-cluster
         role: pingaccess-engine
       annotations:
         lastUpdateReason: "NA"
@@ -211,6 +216,9 @@ spec:
         - name: pingaccess-license
           mountPath: /opt/in/instance/conf/pingaccess.lic
           subPath: pingaccess.lic
+        - name: pingaccess-jwk
+          mountPath: /opt/in/instance/conf/pa.jwk
+          subPath: pa.jwk
         - name: pingaccess-pre-stop
           mountPath: /opt/staging/pre-stop.sh
           subPath: pre-stop.sh
@@ -277,6 +285,11 @@ spec:
       - name: pingaccess-passwords
         secret:
           secretName: pingaccess-passwords
+          optional: true
+          defaultMode: 0400
+      - name: pingaccess-jwk
+        secret:
+          secretName: pingaccess-jwk
           optional: true
           defaultMode: 0400
       - name: pingaccess-pre-stop
