@@ -1,30 +1,26 @@
 # This defines the pingfederate admin deployment.
 
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: pingfederate-admin
   labels:
-    cluster: pingfederate-cluster
+    cluster: pf-cluster
     role: pingfederate-admin
 spec:
   replicas: 1
-  serviceName: pingfederate-admin
-  updateStrategy:
-    type: RollingUpdate
-  podManagementPolicy: OrderedReady
   template:
     metadata:
       name: pingfederate-admin
       labels:
-        cluster: pingfederate-cluster
+        cluster: pf-cluster
         role: pingfederate-admin
       annotations:
         lastUpdateReason: "NA"
     spec:
       serviceAccount: ping-serviceaccount
       initContainers:
-      - name: pingfederate-init
+      - name: pf-init
         # FIXME: switch to same user as app
         securityContext:
           runAsNonRoot: false
@@ -44,7 +40,7 @@ spec:
         - name: known-hosts-config
           mountPath: /known_hosts
           subPath: known_hosts
-        - name: pingfederate-init
+        - name: pf-init
           mountPath: /init.sh
           subPath: init.sh
         envFrom:
@@ -93,8 +89,8 @@ spec:
         - name: pingfederate-jwk
           mountPath: /opt/in/instance/server/default/data/pf.jwk
           subPath: pf.jwk
-        - name: out-dir
-          mountPath: /opt/out 
+        # - name: out-dir
+        #   mountPath: /opt/out 
         readinessProbe:
           exec:
             command: [ liveness.sh ]
@@ -107,14 +103,15 @@ spec:
           failureThreshold: 10
         ports:
         - containerPort: 9999
+          name: pf-admin
       volumes:
       - name: ssh-dir
         emptyDir: {}
       - name: data-dir
         emptyDir: {}
-      - name: pingfederate-init
+      - name: pf-init
         configMap:
-          name: pingfederate-init
+          name: pf-init
           defaultMode: 0555
       - name: ssh-id-key-secret
         secret:
@@ -126,9 +123,9 @@ spec:
           name: known-hosts-config
           optional: true
           defaultMode: 0644
-      - name: out-dir
-        persistentVolumeClaim:
-          claimName: out-dir
+      # - name: out-dir
+      #   persistentVolumeClaim:
+      #     claimName: out-dir
       - name: pingfederate-license
         secret:
           secretName: pingfederate-license
@@ -144,14 +141,14 @@ spec:
           secretName: pingfederate-jwk
           optional: true
           defaultMode: 0400
-  volumeClaimTemplates:
-  - metadata:
-      name: out-dir
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      storageClassName: pingfederate-datastore
-      resources:
-        requests:
-          storage: 5Gi
+  # volumeClaimTemplates:
+  # - metadata:
+  #     name: out-dir
+  #   spec:
+  #     accessModes:
+  #     - ReadWriteOnce
+  #     storageClassName: pingfederate-datastore
+  #     resources:
+  #       requests:
+  #         storage: 5Gi
 

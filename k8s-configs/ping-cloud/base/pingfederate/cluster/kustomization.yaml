@@ -4,7 +4,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 resources:
 - secret.yaml
 - configmap.yaml
-- storage.yaml  
+- storage.yaml
+- periodic-backup.yaml
+- backup.yaml
 - statefulset.yaml
 - deployment.yaml
 - service.yaml
@@ -18,3 +20,10 @@ configMapGenerator:
 - name: pingfederate-environment-variables
   envs:
   - env_vars
+
+vars:
+- name: K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN
+  objref:
+    kind: Deployment
+    name: pingfederate-admin
+    apiVersion: apps/v1

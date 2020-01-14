@@ -8,6 +8,6 @@ metadata:
 spec:
   ports:
   - port: 9999
-    name: pingfederate-admin
+    name: pf-admin
   - port: 9031
-    name: pingfederate-runtime
+    name: pf-runtime

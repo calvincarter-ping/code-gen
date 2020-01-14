@@ -10,7 +10,7 @@ metadata:
 spec:
   ports:
   - port: 9999
-    name: pingfederate-admin
+    name: pf-admin
   selector:
     role: pingfederate-admin
 ---
@@ -24,7 +24,7 @@ metadata:
 spec:
   ports:
   - port: 9031
-    name: pingfederate-runtime
+    name: pf-runtime
   selector:
     role: pingfederate-engine
 ---    
@@ -36,23 +36,23 @@ kind: Service
 metadata:
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
-  name: pingfederate-cluster
+  name: pf-cluster
 spec:
   publishNotReadyAddresses: true
   clusterIP: None
   ports:
-    - name: pingfederate-cluster-bind
+    - name: pf-cluster-bind
       protocol: TCP
       port: 7600
       targetPort: 7600
-    - name: pingfederate-cluster-mcast
+    - name: pf-cluster-mcast
       protocol: TCP
       port: 7601
       targetPort: 7601
-    - name: pingfederate-cluster-diag
+    - name: pf-cluster-diag
       protocol: TCP
       port: 7500
       targetPort: 7500
   selector:
-     cluster: pingfederate-cluster
+     cluster: pf-cluster
 
