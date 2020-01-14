@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pingfederate-backup-archive-data-script
+  name: pingfederate-periodic-backup-script
 data:
   backup-archive-data.sh: |-
     #!/bin/sh
@@ -55,11 +55,11 @@ spec:
                 name: devops-secret
                 optional: true
             volumeMounts:
-            - name: pingfederate-backup-archive-data-script
+            - name: pingfederate-periodic-backup-script
               mountPath: /opt/in/backup-archive-data.sh
               subPath: backup-archive-data.sh
           volumes:
-          - name: pingfederate-backup-archive-data-script
+          - name: pingfederate-periodic-backup-script
             configMap:
-              name: pingfederate-backup-archive-data-script
+              name: pingfederate-periodic-backup-script
               defaultMode: 0555

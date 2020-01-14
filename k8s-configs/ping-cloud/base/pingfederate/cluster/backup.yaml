@@ -1,5 +1,34 @@
 # A manual backup job - this does the same thing as the CronJob except it may be configured to be triggered in reaction
 # to a ClickOps event.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pingfederate-manual-backup-script
+data:
+  backup-archive-data.sh: |-
+    #!/bin/sh
+
+    # Install kubectl
+    echo "Installing kubectl"
+    curl https://storage.googleapis.com/kubernetes-release/release/v1.15.0/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl
+    chmod +x /usr/local/bin/kubectl
+
+    CSD_FILES=
+    SERVER=$(kubectl get pod -l role=${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN} | sed -n "/${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN}/p" | awk '{print $1}')
+
+    echo "Uploading CSD on server ${SERVER}"
+    kubectl exec "${SERVER}" -- chmod +x "${HOOKS_DIR}"/82-upload-archive-data-s3.sh | tee /tmp/upload.log
+    kubectl exec "${SERVER}" -- "${HOOKS_DIR}"/82-upload-archive-data-s3.sh | tee /tmp/upload.log
+
+    CSD_FILE=$(tail -1 /tmp/upload.log)
+    test -z "${CSD_FILES}" && CSD_FILES="${CSD_FILE}" || CSD_FILES="${CSD_FILES} ${CSD_FILE}"
+
+    # Print the names of the uploaded files so callers know exactly what was uploaded
+    echo "The following files were uploaded:"
+    echo "${CSD_FILES}"
+
+---
+
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,7 +41,7 @@ spec:
       serviceAccount: ping-serviceaccount
       restartPolicy: Never
       containers:
-      - name: pingfederate-admin-backup
+      - name: pingfederate-backup
         # FIXME: switch to stable image before GA
         image: pingidentity/pingfederate:10.0.0-alpine-edge
         command:
@@ -27,11 +56,11 @@ spec:
             name: devops-secret
             optional: true
         volumeMounts:
-        - name: pingfederate-backup-archive-data-script
+        - name: pingfederate-manual-backup-script
           mountPath: /opt/in/backup-archive-data.sh
           subPath: backup-archive-data.sh
       volumes:
-      - name: pingfederate-backup-archive-data-script
+      - name: pingfederate-manual-backup-script
         configMap:
-          name: pingfederate-backup-archive-data-script
+          name: pingfederate-manual-backup-script
           defaultMode: 0555

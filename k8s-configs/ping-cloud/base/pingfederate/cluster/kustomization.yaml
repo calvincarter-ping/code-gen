@@ -6,8 +6,6 @@ resources:
 - configmap.yaml
 - storage.yaml
 - periodic-backup.yaml
-- backup.yaml
-- statefulset.yaml
 - deployment.yaml
 - service.yaml
 - ingress.yaml
