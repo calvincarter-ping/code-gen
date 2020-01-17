@@ -14,7 +14,7 @@ data:
     chmod +x /usr/local/bin/kubectl
 
     UPLOAD_FILES=
-    SERVER=$(kubectl get pod -l role=${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN} | sed -n "/${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN}/p" | awk '{print $1}')
+    SERVER=$(kubectl get pod -l cluster=standalone | sed -n "/${K8S_DEPLOYMENT_NAME_PINGFEDERATE}/p" | awk '{print $1}')
 
     echo "Uploading pingfederate backup data on server ${SERVER}"
     kubectl exec "${SERVER}" -- chmod +x "${HOOKS_DIR}"/82-upload-archive-data-s3.sh | tee /tmp/upload.log

@@ -1,5 +1,3 @@
-# A manual backup job - this does the same thing as the CronJob except it may be configured to be triggered in reaction
-# to a ClickOps event.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,25 +8,29 @@ data:
 
     # Install kubectl
     echo "Installing kubectl"
-    curl https://storage.googleapis.com/kubernetes-release/release/v1.15.0/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl
+    curl https://storage.googleapis.com/kubernetes-release/release/v1.15.0/bin/linux/amd64/kubectl \
+    -o /usr/local/bin/kubectl
+    
     chmod +x /usr/local/bin/kubectl
 
-    CSD_FILES=
+    UPLOAD_FILES=
     SERVER=$(kubectl get pod -l role=${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN} | sed -n "/${K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN}/p" | awk '{print $1}')
 
-    echo "Uploading CSD on server ${SERVER}"
+    echo "Uploading pingfederate backup data on server ${SERVER}"
     kubectl exec "${SERVER}" -- chmod +x "${HOOKS_DIR}"/82-upload-archive-data-s3.sh | tee /tmp/upload.log
     kubectl exec "${SERVER}" -- "${HOOKS_DIR}"/82-upload-archive-data-s3.sh | tee /tmp/upload.log
 
-    CSD_FILE=$(tail -1 /tmp/upload.log)
-    test -z "${CSD_FILES}" && CSD_FILES="${CSD_FILE}" || CSD_FILES="${CSD_FILES} ${CSD_FILE}"
+    UPLOAD_FILE=$(tail -1 /tmp/upload.log)
+    test -z "${UPLOAD_FILES}" && UPLOAD_FILES="${UPLOAD_FILE}" || UPLOAD_FILES="${UPLOAD_FILES} ${UPLOAD_FILE}"
 
     # Print the names of the uploaded files so callers know exactly what was uploaded
     echo "The following files were uploaded:"
-    echo "${CSD_FILES}"
+    echo "${UPLOAD_FILES}"
 
 ---
 
+# A manual backup job - this does the same thing as the CronJob except it may be configured to be triggered in reaction
+# to a ClickOps event.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -46,9 +48,6 @@ spec:
         image: pingidentity/pingfederate:10.0.0-alpine-edge
         command:
         - /opt/in/backup-archive-data.sh
-        env:
-        - name:  K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN
-          value: $(K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN)
         envFrom:
         - configMapRef:
             name: pingfederate-environment-variables

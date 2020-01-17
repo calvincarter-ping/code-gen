@@ -2,10 +2,11 @@ kind: Kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 
 resources:
-- secret.yaml
+- minimal-secret.yaml
+#- baseline-secret.yaml
 - configmap.yaml
-- storage.yaml
-- periodic-backup.yaml
+# FIXME: Will move periodic-backup.yaml to code-gen before kube mode 1
+# - periodic-backup.yaml
 - deployment.yaml
 - service.yaml
 - ingress.yaml
@@ -18,10 +19,3 @@ configMapGenerator:
 - name: pingfederate-environment-variables
   envs:
   - env_vars
-
-vars:
-- name: K8S_DEPLOYMENT_NAME_PINGFEDERATE_ADMIN
-  objref:
-    kind: Deployment
-    name: pingfederate-admin
-    apiVersion: apps/v1
